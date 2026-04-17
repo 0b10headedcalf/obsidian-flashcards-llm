@@ -1,7 +1,7 @@
 import { App, Modal, Setting } from "obsidian"
 import { FlashcardsSettings } from "./settings"
 import FlashcardsLLMPlugin from "./main"
-import { availableCompletionModels, availableChatModels, availableReasoningModels, allAvailableModels } from "./models"
+import { availableReasoningModels } from "./models"
 
 
 // TODO:
@@ -23,32 +23,55 @@ export class InputModal extends Modal {
   }
 
   onOpen() {
-    let {  contentEl, containerEl, modalEl } = this;
+    let { contentEl } = this;
     contentEl.createEl("h1", { text: "Prompt configuration" });
 
     new Setting(contentEl)
-    .setName("Model")
+    .setName("Provider")
     .addDropdown((dropdown) =>
       dropdown
-	  .addOptions(Object.fromEntries(allAvailableModels().map(k => [k, k])))
+      .addOptions({ openai: "OpenAI", openrouter: "OpenRouter" })
+      .setValue(this.configuration.provider)
+      .onChange((value: "openai" | "openrouter") => {
+        this.configuration.provider = value;
+        const isOpenRouter = value === "openrouter";
+        reasoningEffortSetting.setDisabled(isOpenRouter || !availableReasoningModels().includes(this.configuration.model));
+      })
+    );
+
+    new Setting(contentEl)
+    .setName("Model")
+    .setDesc(this.configuration.provider === "openrouter"
+      ? "e.g. anthropic/claude-3-5-sonnet, google/gemini-2.0-flash"
+      : "e.g. gpt-4o, o3-mini")
+    .addText((text) =>
+      text
+      .setPlaceholder(this.configuration.provider === "openrouter" ? "anthropic/claude-3-5-sonnet" : "gpt-4o")
       .setValue(this.configuration.model)
-      .onChange(async (value) => {
-		reasoningEffortSetting.setDisabled(!availableReasoningModels().includes(value));
-        this.configuration.model = value
+      .onChange((value) => {
+        this.configuration.model = value;
+        reasoningEffortSetting.setDisabled(
+          this.configuration.provider === "openrouter" ||
+          !availableReasoningModels().includes(value)
+        );
       })
     );
 
     const reasoningEffortSetting = new Setting(contentEl)
     .setName("Reasoning Effort")
+    .setDesc("Only applies to OpenAI reasoning models (o1, o3).")
     .addDropdown((dropdown) =>
       dropdown
-	  .addOptions(Object.fromEntries(["low", "medium", "high"].map(k => [k, k]))) // TODO: refactor reasoning entries
+      .addOptions(Object.fromEntries(["low", "medium", "high"].map(k => [k, k])))
       .setValue(this.configuration.reasoningEffort)
-      .onChange(async (value) => {
+      .onChange((value) => {
         this.configuration.reasoningEffort = value;
       })
     );
-	reasoningEffortSetting.setDisabled(!availableReasoningModels().includes(this.configuration.model));
+    reasoningEffortSetting.setDisabled(
+      this.configuration.provider === "openrouter" ||
+      !availableReasoningModels().includes(this.configuration.model)
+    );
 
     new Setting(contentEl)
     .setName("Number of flashcards to generate")
@@ -57,7 +80,6 @@ export class InputModal extends Modal {
       .setValue(this.configuration.flashcardsCount.toString())
       .onChange((value) => {
         this.configuration.flashcardsCount = Number(value)
-        // TODO: check input
       })
     );
 
@@ -66,8 +88,8 @@ export class InputModal extends Modal {
     .addText((text) =>
       text
       .setPlaceholder("#flashcards")
-      .setValue(this.plugin.settings.tag)
-      .onChange(async (value) => {
+      .setValue(this.configuration.tag)
+      .onChange((value) => {
         this.configuration.tag = value
       })
     );
@@ -84,16 +106,16 @@ export class InputModal extends Modal {
 
     new Setting(contentEl)
       .setName("Multiline")
-      .addToggle((on) => 
+      .addToggle((on) =>
         on
         .setValue(false)
-        .onChange(async (on) => {
+        .onChange((on) => {
           this.multiline = on
         })
       );
 
     new Setting(contentEl)
-      .addButton((btn) => 
+      .addButton((btn) =>
         btn
         .setButtonText("Submit")
         .setCta()
@@ -104,9 +126,6 @@ export class InputModal extends Modal {
 
     contentEl.addEventListener("keyup", ({key}) => {
       if (key === "Enter") {
-        // Hack to make the keypress work reliably:
-        // without this (for example) it registers the KEYUP event from
-        // when the user issued the command from the command palette
         if (this.keypressed) {
           this.submit();
         }
@@ -117,7 +136,7 @@ export class InputModal extends Modal {
     });
 
   }
-  
+
   submit() {
     this.close();
     this.onSubmit(this.configuration, this.multiline);

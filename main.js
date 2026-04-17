@@ -33,14 +33,8 @@ var import_obsidian3 = require("obsidian");
 function availableChatModels() {
   return ["gpt-4o", "gpt-4o-mini", "gpt-4-turbo", "gpt-3.5-turbo"];
 }
-function availableCompletionModels() {
-  return [];
-}
 function availableReasoningModels() {
   return ["o1", "o1-mini", "o3", "o3-mini"];
-}
-function allAvailableModels() {
-  return availableChatModels().concat(availableReasoningModels(), availableCompletionModels());
 }
 var PROVIDER_BASE_URLS = {
   openai: "https://api.openai.com/v1",
@@ -6559,27 +6553,38 @@ var InputModal = class extends import_obsidian.Modal {
     this.keypressed = false;
   }
   onOpen() {
-    let { contentEl, containerEl, modalEl } = this;
+    let { contentEl } = this;
     contentEl.createEl("h1", { text: "Prompt configuration" });
-    new import_obsidian.Setting(contentEl).setName("Model").addDropdown(
-      (dropdown) => dropdown.addOptions(Object.fromEntries(allAvailableModels().map((k) => [k, k]))).setValue(this.configuration.model).onChange(async (value) => {
-        reasoningEffortSetting.setDisabled(!availableReasoningModels().includes(value));
-        this.configuration.model = value;
+    new import_obsidian.Setting(contentEl).setName("Provider").addDropdown(
+      (dropdown) => dropdown.addOptions({ openai: "OpenAI", openrouter: "OpenRouter" }).setValue(this.configuration.provider).onChange((value) => {
+        this.configuration.provider = value;
+        const isOpenRouter = value === "openrouter";
+        reasoningEffortSetting.setDisabled(isOpenRouter || !availableReasoningModels().includes(this.configuration.model));
       })
     );
-    const reasoningEffortSetting = new import_obsidian.Setting(contentEl).setName("Reasoning Effort").addDropdown(
-      (dropdown) => dropdown.addOptions(Object.fromEntries(["low", "medium", "high"].map((k) => [k, k]))).setValue(this.configuration.reasoningEffort).onChange(async (value) => {
+    new import_obsidian.Setting(contentEl).setName("Model").setDesc(this.configuration.provider === "openrouter" ? "e.g. anthropic/claude-3-5-sonnet, google/gemini-2.0-flash" : "e.g. gpt-4o, o3-mini").addText(
+      (text) => text.setPlaceholder(this.configuration.provider === "openrouter" ? "anthropic/claude-3-5-sonnet" : "gpt-4o").setValue(this.configuration.model).onChange((value) => {
+        this.configuration.model = value;
+        reasoningEffortSetting.setDisabled(
+          this.configuration.provider === "openrouter" || !availableReasoningModels().includes(value)
+        );
+      })
+    );
+    const reasoningEffortSetting = new import_obsidian.Setting(contentEl).setName("Reasoning Effort").setDesc("Only applies to OpenAI reasoning models (o1, o3).").addDropdown(
+      (dropdown) => dropdown.addOptions(Object.fromEntries(["low", "medium", "high"].map((k) => [k, k]))).setValue(this.configuration.reasoningEffort).onChange((value) => {
         this.configuration.reasoningEffort = value;
       })
     );
-    reasoningEffortSetting.setDisabled(!availableReasoningModels().includes(this.configuration.model));
+    reasoningEffortSetting.setDisabled(
+      this.configuration.provider === "openrouter" || !availableReasoningModels().includes(this.configuration.model)
+    );
     new import_obsidian.Setting(contentEl).setName("Number of flashcards to generate").addText(
       (text) => text.setValue(this.configuration.flashcardsCount.toString()).onChange((value) => {
         this.configuration.flashcardsCount = Number(value);
       })
     );
     new import_obsidian.Setting(contentEl).setName("Flashcards tag").addText(
-      (text) => text.setPlaceholder("#flashcards").setValue(this.plugin.settings.tag).onChange(async (value) => {
+      (text) => text.setPlaceholder("#flashcards").setValue(this.configuration.tag).onChange((value) => {
         this.configuration.tag = value;
       })
     );
@@ -6589,7 +6594,7 @@ var InputModal = class extends import_obsidian.Modal {
       })
     );
     new import_obsidian.Setting(contentEl).setName("Multiline").addToggle(
-      (on) => on.setValue(false).onChange(async (on2) => {
+      (on) => on.setValue(false).onChange((on2) => {
         this.multiline = on2;
       })
     );
