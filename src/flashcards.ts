@@ -1,4 +1,4 @@
-import { availableChatModels, availableCompletionModels, availableReasoningModels } from "./models";
+import { availableChatModels, availableReasoningModels } from "./models";
 import { OpenAI } from 'openai';
 import { Readable } from "stream";
 
@@ -76,12 +76,14 @@ export async function* generateFlashcards(
 	maxTokens: number = 300,
 	multiline: boolean = false,
 	reasoningEffort: string,
-	stream: boolean = true
+	stream: boolean = true,
+	baseUrl?: string
 ) {
 
 	const openai = new OpenAI({
 		apiKey: apiKey,
-		dangerouslyAllowBrowser: true
+		dangerouslyAllowBrowser: true,
+		...(baseUrl && { baseURL: baseUrl }),
 	});
 
 	const cleanedText = text.replace(/<!--.*-->[\n]?/g, "");
@@ -95,15 +97,15 @@ export async function* generateFlashcards(
 the original task): ${additionalInfo}`
 	}
 
-	const chatModels = availableChatModels()
-	const completionModels = availableCompletionModels()
 	const reasoningModels = availableReasoningModels()
-	const isReasoning = reasoningModels.includes(model)
+	// OpenRouter and other providers use chat completions for all models
+	const isCustomProvider = !!baseUrl;
+	const isReasoning = !isCustomProvider && reasoningModels.includes(model)
 	let response = null;
 
 	// TODO: use newer client.responses.create endpoint.
 	// TODO: use structured (json) output to enforce flashcards formatting
-	if (chatModels.includes(model) || reasoningModels.includes(model)) {
+	if (isCustomProvider || availableChatModels().includes(model) || reasoningModels.includes(model)) {
 		response = await openai.chat.completions.create({
 		model: model,
 		...(!isReasoning && { temperature: 0.7 }),

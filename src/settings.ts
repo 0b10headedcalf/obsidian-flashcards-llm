@@ -1,5 +1,5 @@
 import { App, MarkdownView, PluginSettingTab, Setting } from 'obsidian';
-import { availableChatModels, availableCompletionModels, availableReasoningModels, allAvailableModels } from "./models";
+import { availableReasoningModels, PROVIDER_BASE_URLS } from "./models";
 import FlashcardsLLMPlugin from "./main"
 
 // TODO:
@@ -7,6 +7,7 @@ import FlashcardsLLMPlugin from "./main"
 
 export interface FlashcardsSettings {
   apiKey: string;
+  provider: "openai" | "openrouter";
   model: string;
   inlineSeparator: string;
   multilineSeparator: string;
@@ -36,8 +37,27 @@ export class FlashcardsSettingsTab extends PluginSettingTab {
     containerEl.createEl("h3", {text: "Model settings"})
 
     new Setting(containerEl)
-    .setName("OpenAI API key")
-    .setDesc("Enter your OpenAI API key")
+    .setName("Provider")
+    .setDesc("Select API provider")
+    .addDropdown((dropdown) =>
+      dropdown
+      .addOptions({ openai: "OpenAI", openrouter: "OpenRouter" })
+      .setValue(this.plugin.settings.provider)
+      .onChange(async (value: "openai" | "openrouter") => {
+        this.plugin.settings.provider = value;
+        await this.plugin.saveSettings();
+        this.display();
+      })
+    );
+
+    const provider = this.plugin.settings.provider;
+    const apiKeyDesc = provider === "openrouter"
+      ? "Enter your OpenRouter API key (openrouter.ai/keys)"
+      : "Enter your OpenAI API key";
+
+    new Setting(containerEl)
+    .setName("API key")
+    .setDesc(apiKeyDesc)
     .addText((text) =>
       text
       .setPlaceholder("API key")
@@ -48,33 +68,38 @@ export class FlashcardsSettingsTab extends PluginSettingTab {
       })
     );
 
+    const modelDesc = provider === "openrouter"
+      ? "Model ID as listed on openrouter.ai (e.g. anthropic/claude-3-5-sonnet, google/gemini-2.0-flash)"
+      : "Model ID (e.g. gpt-4o, o3-mini)";
+
     new Setting(containerEl)
     .setName("Model")
-    .setDesc("Which language model to use")
-    .addDropdown((dropdown) =>
-      dropdown
-	  .addOptions(Object.fromEntries(allAvailableModels().map(k => [k, k])))
+    .setDesc(modelDesc)
+    .addText((text) =>
+      text
+      .setPlaceholder(provider === "openrouter" ? "anthropic/claude-3-5-sonnet" : "gpt-4o")
       .setValue(this.plugin.settings.model)
       .onChange(async (value) => {
         this.plugin.settings.model = value;
-		reasoningEffortSetting.setDisabled(!availableReasoningModels().includes(value));
         await this.plugin.saveSettings();
       })
     );
 
+    const isReasoning = availableReasoningModels().includes(this.plugin.settings.model);
+
     const reasoningEffortSetting = new Setting(containerEl)
     .setName("Reasoning Effort")
-    .setDesc("Constrains effort on reasoning for reasoning models.")
+    .setDesc("Constrains effort on reasoning for OpenAI reasoning models (o1, o3).")
     .addDropdown((dropdown) =>
       dropdown
-	  .addOptions(Object.fromEntries(["low", "medium", "high"].map(k => [k, k])))
+      .addOptions(Object.fromEntries(["low", "medium", "high"].map(k => [k, k])))
       .setValue(this.plugin.settings.reasoningEffort)
       .onChange(async (value) => {
         this.plugin.settings.reasoningEffort = value;
         await this.plugin.saveSettings();
       })
     );
-	reasoningEffortSetting.setDisabled(!availableReasoningModels().includes(this.plugin.settings.model));
+    reasoningEffortSetting.setDisabled(provider === "openrouter" || !isReasoning);
 
     containerEl.createEl("h3", {text: "Preferences"})
 
@@ -160,7 +185,7 @@ export class FlashcardsSettingsTab extends PluginSettingTab {
     new Setting(containerEl)
     .setName("Streaming")
     .setDesc("Enable/Disable streaming text completion")
-    .addToggle((on) => 
+    .addToggle((on) =>
       on
       .setValue(this.plugin.settings.streaming)
       .onChange(async (on) => {
@@ -173,7 +198,7 @@ export class FlashcardsSettingsTab extends PluginSettingTab {
     .setName("Hide flashcards in preview mode")
     .setDesc("If enabled, you won't see flashcards when in preview mode, "
       + "but you will still be able to edit them")
-    .addToggle((on) => 
+    .addToggle((on) =>
       on
       .setValue(this.plugin.settings.hideInPreview)
       .onChange(async (on) => {

@@ -2,6 +2,7 @@ import { App, Editor, EditorPosition, MarkdownView, Modal, Notice, Plugin, Plugi
 import { generateFlashcards } from "./flashcards";
 import { InputModal } from "./components"
 import { FlashcardsSettings, FlashcardsSettingsTab } from "./settings"
+import { PROVIDER_BASE_URLS } from "./models"
 
 // TODO:
 // - Status bar
@@ -11,6 +12,7 @@ import { FlashcardsSettings, FlashcardsSettingsTab } from "./settings"
 
 const DEFAULT_SETTINGS: FlashcardsSettings = {
   apiKey: "",
+  provider: "openai",
   model: "gpt-4o",
   inlineSeparator: "::",
   multilineSeparator: "?",
@@ -126,6 +128,7 @@ export default class FlashcardsLLMPlugin extends Plugin {
     await flashcardsCount
 
     try {
+      const baseUrl = PROVIDER_BASE_URLS[configuration.provider] ?? PROVIDER_BASE_URLS.openai;
       const generatedFlashcards = await generateFlashcards(
         currentText,
         apiKey,
@@ -136,7 +139,8 @@ export default class FlashcardsLLMPlugin extends Plugin {
         maxTokens,
         multiline,
 		configuration.reasoningEffort,
-        streaming
+        streaming,
+        baseUrl
       )
 
       let updatedText = "";
