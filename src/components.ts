@@ -1,0 +1,142 @@
+import { App, Modal, Setting } from "obsidian"
+import { FlashcardsSettings } from "./settings"
+import FlashcardsLLMPlugin from "./main"
+import { availableCompletionModels, availableChatModels, availableReasoningModels, allAvailableModels } from "./models"
+
+
+// TODO:
+// - sticky settings
+
+export class InputModal extends Modal {
+  plugin: FlashcardsLLMPlugin
+  configuration: FlashcardsSettings;
+  multiline: boolean;
+  keypressed: boolean;
+  onSubmit: (configuration: FlashcardsSettings, multiline: boolean) => void;
+
+  constructor(app: App, plugin: FlashcardsLLMPlugin, onSubmit: (configuration: FlashcardsSettings, multiline: boolean) => void) {
+    super(app);
+    this.plugin = plugin;
+    this.onSubmit = onSubmit;
+    this.configuration = { ...this.plugin.settings };
+    this.keypressed = false;
+  }
+
+  onOpen() {
+    let {  contentEl, containerEl, modalEl } = this;
+    contentEl.createEl("h1", { text: "Prompt configuration" });
+
+    const isOpenRouter = this.configuration.provider === "openrouter";
+
+    const modelSetting = new Setting(contentEl).setName("Model");
+    if (isOpenRouter) {
+      modelSetting.addText((text) =>
+        text
+        .setPlaceholder("anthropic/claude-3-5-sonnet")
+        .setValue(this.configuration.model)
+        .onChange((value) => {
+          this.configuration.model = value;
+        })
+      );
+    } else {
+      modelSetting.addDropdown((dropdown) =>
+        dropdown
+        .addOptions(Object.fromEntries(allAvailableModels().map(k => [k, k])))
+        .setValue(this.configuration.model)
+        .onChange(async (value) => {
+          reasoningEffortSetting.setDisabled(!availableReasoningModels().includes(value));
+          this.configuration.model = value;
+        })
+      );
+    }
+
+    const reasoningEffortSetting = new Setting(contentEl)
+    .setName("Reasoning Effort")
+    .addDropdown((dropdown) =>
+      dropdown
+	  .addOptions(Object.fromEntries(["low", "medium", "high"].map(k => [k, k])))
+      .setValue(this.configuration.reasoningEffort)
+      .onChange(async (value) => {
+        this.configuration.reasoningEffort = value;
+      })
+    );
+	reasoningEffortSetting.setDisabled(isOpenRouter || !availableReasoningModels().includes(this.configuration.model));
+
+    new Setting(contentEl)
+    .setName("Number of flashcards to generate")
+    .addText((text) =>
+      text
+      .setValue(this.configuration.flashcardsCount.toString())
+      .onChange((value) => {
+        this.configuration.flashcardsCount = Number(value)
+        // TODO: check input
+      })
+    );
+
+    new Setting(contentEl)
+    .setName("Flashcards tag")
+    .addText((text) =>
+      text
+      .setPlaceholder("#flashcards")
+      .setValue(this.plugin.settings.tag)
+      .onChange(async (value) => {
+        this.configuration.tag = value
+      })
+    );
+
+    new Setting(contentEl)
+    .setName("Additional prompt")
+    .addText((text) =>
+      text
+      .setValue(this.configuration.additionalPrompt)
+      .onChange((value) => {
+        this.configuration.additionalPrompt = value
+      })
+    );
+
+    new Setting(contentEl)
+      .setName("Multiline")
+      .addToggle((on) => 
+        on
+        .setValue(false)
+        .onChange(async (on) => {
+          this.multiline = on
+        })
+      );
+
+    new Setting(contentEl)
+      .addButton((btn) => 
+        btn
+        .setButtonText("Submit")
+        .setCta()
+        .onClick(() => {
+          this.submit();
+        })
+      );
+
+    contentEl.addEventListener("keyup", ({key}) => {
+      if (key === "Enter") {
+        // Hack to make the keypress work reliably:
+        // without this (for example) it registers the KEYUP event from
+        // when the user issued the command from the command palette
+        if (this.keypressed) {
+          this.submit();
+        }
+        else {
+          this.keypressed = true;
+        }
+      }
+    });
+
+  }
+  
+  submit() {
+    this.close();
+    this.onSubmit(this.configuration, this.multiline);
+  }
+
+  onClose() {
+    let { contentEl } = this;
+    contentEl.empty();
+  }
+}
